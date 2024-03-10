@@ -1,11 +1,14 @@
 import pygame
 import sys
 import math
+import random
 
 # Define colors
 WHITE = (255, 255, 255)
 RED = (255, 0, 0)
 BLUE = (0, 0, 255)
+BLACK = (0, 0, 0)
+
 
 class Bullet:
     def __init__(self, x, y, angle, velocity):
@@ -21,11 +24,11 @@ class Bullet:
         self.y += self.velocity * math.sin(math.radians(self.angle))
 
     def draw(self, surface):
-        pygame.draw.rect(surface, (0, 0, 0), (self.x, self.y, self.width, self.height))
+        pygame.draw.rect(surface, BLACK, (self.x, self.y, self.width, self.height))
 
 
 class Square:
-    def __init__(self, color, x, y, width, height, screen_width, screen_height):
+    def __init__(self, color, x, y, width, height, screen_width, screen_height, obstacles):
         self.color = color
         self.x = x
         self.y = y
@@ -36,10 +39,12 @@ class Square:
         self.screen_height = screen_height
         self.back_width = 10
         self.back_height = 10
+        self.ray_length = 300
         self.angle = 0  # Initial angle
         self.health = 10  # Initial health
         self.bullets = []
         self.last_shot_time = pygame.time.get_ticks()  # Store the time when the last bullet was shot
+        self.obstacles = obstacles
 
     def draw(self, surface):
         # Draw main square
@@ -50,11 +55,17 @@ class Square:
         back_center_y = self.y + self.height / 2 + self.height / 2 * math.sin(math.radians(self.angle))
 
         # Draw back side
-        pygame.draw.rect(surface, (0, 0, 0), (back_center_x - self.back_width / 2, back_center_y - self.back_height / 2, self.back_width, self.back_height))
+        pygame.draw.rect(surface, BLACK, (
+        back_center_x - self.back_width / 2, back_center_y - self.back_height / 2, self.back_width, self.back_height))
+
+        # Draw the direction indicator (ray)
+        end_x = back_center_x + self.ray_length * math.cos(math.radians(self.angle))
+        end_y = back_center_y + self.ray_length * math.sin(math.radians(self.angle))
+        pygame.draw.line(surface, (255, 255, 0), (back_center_x, back_center_y), (end_x, end_y), 2)
 
         # Draw health
         font = pygame.font.Font(None, 24)
-        text_surface = font.render(str(self.health), True, (255, 255, 255))
+        text_surface = font.render(str(self.health), True, WHITE)
         text_rect = text_surface.get_rect(center=(self.x + self.width / 2, self.y + self.height / 2))
         surface.blit(text_surface, text_rect)
 
@@ -62,14 +73,18 @@ class Square:
         for bullet in self.bullets:
             bullet.draw(surface)
 
+        # Draw obstacles
+        for obstacle in self.obstacles:
+            pygame.draw.rect(surface, BLACK, obstacle)
+
     def move(self, dx, dy):
         new_x = self.x + dx
         new_y = self.y + dy
 
-        # Check if the new position is within the screen boundaries
-        if 0 <= new_x <= self.screen_width - self.width:
+        # Check if the new position is within the screen boundaries and not colliding with obstacles
+        if 0 <= new_x <= self.screen_width - self.width and not self.collides_with_obstacle(new_x, self.y):
             self.x = new_x
-        if 0 <= new_y <= self.screen_height - self.height:
+        if 0 <= new_y <= self.screen_height - self.height and not self.collides_with_obstacle(self.x, new_y):
             self.y = new_y
 
     def rotate_clockwise(self):
@@ -93,22 +108,70 @@ class Square:
             if bullet.x < 0 or bullet.x > self.screen_width or bullet.y < 0 or bullet.y > self.screen_height:
                 self.bullets.remove(bullet)
 
+            # Check for collision with obstacles
+            for obstacle in self.obstacles:
+                if (bullet.x >= obstacle[0] and bullet.x <= obstacle[0] + obstacle[2] and
+                        bullet.y >= obstacle[1] and bullet.y <= obstacle[1] + obstacle[3]):
+                    self.bullets.remove(bullet)
+                    break
+
     def check_collision(self, other_square):
         for bullet in other_square.bullets:
             if (self.x < bullet.x < self.x + self.width) and (self.y < bullet.y < self.y + self.height):
                 self.health -= 1
                 other_square.bullets.remove(bullet)
 
+    def collides_with_obstacle(self, x, y):
+        # Check if the position collides with any obstacle
+        for obstacle in self.obstacles:
+            if (x < obstacle[0] + obstacle[2] and x + self.width > obstacle[0] and
+                    y < obstacle[1] + obstacle[3] and y + self.height > obstacle[1]):
+                return True
+        return False
+
+
+screen_width, screen_height = 500, 500
+
+
+def generate_obstacles():
+    num_obstacles = random.randint(30, 30)  # Random number of obstacles
+    min_obstacle_size = 25
+    max_obstacle_size = 30
+    obstacles = []
+
+    for _ in range(num_obstacles):
+        obstacle_width = random.randint(min_obstacle_size, max_obstacle_size)
+        obstacle_height = random.randint(min_obstacle_size, max_obstacle_size)
+        obstacle_x = random.randint(0, screen_width - obstacle_width)
+        obstacle_y = random.randint(0, screen_height - obstacle_height)
+
+        # Add obstacle to the list
+        obstacles.append((obstacle_x, obstacle_y, obstacle_width, obstacle_height))
+    return obstacles
+
+
+def generate_obstacles_static():
+    x = [120, 200, 350]
+    y = [50, 200, 290]
+    width = [20, 100, 20]
+    height = [150, 100, 150]
+    obstacles = []
+    for i in range(len(x)):
+        obstacles.append((x[i], y[i], width[i], height[i]))
+
+    return obstacles
+
 
 def main():
     pygame.init()
-    screen_width, screen_height = 500, 500
     screen = pygame.display.set_mode((screen_width, screen_height))
     pygame.display.set_caption("Two Squares Game")
     clock = pygame.time.Clock()
 
-    player1 = Square(RED, 50, 50, 50, 50, screen_width, screen_height)
-    player2 = Square(BLUE, 400, 400, 50, 50, screen_width, screen_height)
+    obstacles = generate_obstacles_static()
+
+    player1 = Square(RED, 50, 50, 50, 50, screen_width, screen_height, obstacles)
+    player2 = Square(BLUE, 400, 400, 50, 50, screen_width, screen_height, obstacles)
 
     running = True
     while running:
@@ -168,6 +231,7 @@ def main():
 
     pygame.quit()
     sys.exit()
+
 
 if __name__ == "__main__":
     main()
